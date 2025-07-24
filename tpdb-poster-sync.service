@@ -1,0 +1,21 @@
+[Unit]
+Description=TPDB Poster Sync Service
+After=network.target
+
+[Service]
+Type=simple
+User=sean
+Group=sean
+WorkingDirectory=/home/sean/Documents/coding/jellyfin/tpdbsync
+Environment=PATH=/home/sean/Documents/coding/jellyfin/tpdbsync/venv/bin
+ExecStart=/home/sean/Documents/coding/jellyfin/tpdbsync/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tpdb-poster-sync
+
+[Install]
+WantedBy=multi-user.target

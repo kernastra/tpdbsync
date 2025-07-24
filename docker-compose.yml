@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  tpdb-poster-sync:
+    build: .
+    container_name: tpdb-poster-sync
+    restart: unless-stopped
+    
+    # Environment variables (override config.yaml)
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=America/New_York  # Change to your timezone
+    
+    # Volumes
+    volumes:
+      # Local poster directories
+      - /home/sean/posters:/app/posters:ro  # Read-only access to local posters
+      
+      # Configuration and logs (persistent)
+      - ./config.yaml:/app/config.yaml:ro   # Mount your config file
+      - ./logs:/app/logs                    # Persistent log storage
+      
+      # Optional: Mount SMB credentials file
+      # - ./smb-credentials:/app/smb-credentials:ro
+    
+    # Network mode for SMB access
+    network_mode: host
+    
+    # Resource limits
+    mem_limit: 512m
+    cpus: 0.5
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Optional: Separate network for isolation
+# networks:
+#   poster-sync:
+#     driver: bridge
