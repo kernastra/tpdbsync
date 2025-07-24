@@ -2,7 +2,27 @@
 
 A comprehensive Python application that automatically syncs movie, TV show, and collection posters from local directories to remote Jellyfin metadata storage on TrueNAS or other SMB/CIFS shares.
 
-## 🔄 Purpose & Integration
+## � Table of Contents
+
+- [🔄 Purpose & Integration](#-purpose--integration)
+- [🎯 Features](#-features)
+- [📋 Requirements](#-requirements)
+- [🚀 Quick Start](#-quick-start)
+- [⚙️ Configuration](#️-configuration)
+- [📁 Directory Structure](#-directory-structure)
+- [🐳 Docker Usage](#-docker-usage)
+- [🛠️ Management Commands](#️-management-commands)
+- [📊 Command Line Options](#-command-line-options)
+- [🔍 Monitoring and Logs](#-monitoring-and-logs)
+- [🐛 Troubleshooting](#-troubleshooting)
+- [🔐 Security Considerations](#-security-considerations)
+- [📈 Project Status](#-project-status)
+- [🚀 Recent Success Story](#-recent-success-story)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+- [🙏 Acknowledgments](#-acknowledgments)
+
+## �🔄 Purpose & Integration
 
 This program serves as a **middleman solution** that bridges the gap between poster management tools and Jellyfin's metadata storage. It relies on having the following programs installed and running:
 
