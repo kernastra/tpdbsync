@@ -1,0 +1,55 @@
+# TPDB Poster Sync Configuration Example
+# Copy this file to config.yaml and customize for your setup
+
+# Local poster directories
+local:
+  base_path: "/path/to/your/posters"
+  folders:
+    movies: "media"        # Movies and TV in same folder
+    tv: "media"            # Movies and TV in same folder
+    collections: "collections"  # Separate collections folder
+
+# Remote server settings
+remote:
+  server: "192.168.1.187"
+  share: "apollo"
+  username: "your_username"
+  password: "your_password"
+  domain: "WORKGROUP"
+  
+  # Remote paths (within the share)
+  paths:
+    movies: "media/jellyfin/metadata/library/movies"
+    tv: "media/jellyfin/metadata/library/tv"
+    collections: "media/jellyfin/metadata/library/collections"
+
+# Sync settings
+sync:
+  poster_extensions: [".jpg", ".jpeg", ".png"]
+  poster_names: ["poster", "folder", "cover"]
+  overwrite_existing: false
+  watch_folders: true
+  sync_interval: 300
+  
+  # TV Season poster support (NEW FEATURE!)
+  tv_season_posters: true  # Enable/disable TV season poster syncing
+  season_poster_patterns:   # Patterns to match season poster files
+    - "season\\d{2}-?poster"      # season01-poster, season01poster
+    - "s\\d{2}-?poster"           # s01-poster, s01poster  
+    - "season\\d{1,2}-?poster"    # season1-poster, season12-poster
+    - "s\\d{1,2}-?poster"         # s1-poster, s12-poster
+    - "season\\d{2}-?folder"      # season01-folder
+    - "s\\d{2}-?folder"           # s01-folder
+    - "season\\d{2}-?cover"       # season01-cover
+    - "s\\d{2}-?cover"            # s01-cover
+  
+  # File size constraints
+  min_file_size: 1024      # 1KB minimum
+  max_file_size: 10485760  # 10MB maximum
+
+# Logging
+logging:
+  level: "INFO"
+  file: "poster_sync.log"
+  max_size: 10485760
+  backup_count: 5

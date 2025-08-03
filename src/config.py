@@ -148,3 +148,20 @@ class Config:
     def get_poster_names(self) -> list:
         """Get list of common poster filenames"""
         return self.get('sync.poster_names', ['poster', 'folder', 'cover'])
+    
+    def get_sync_tv_seasons(self) -> bool:
+        """Get whether to sync TV season posters"""
+        return self.get('sync.tv_season_posters', True)
+    
+    def get_season_poster_patterns(self) -> list:
+        """Get list of season poster filename patterns"""
+        return self.get('sync.season_poster_patterns', [
+            r'season\d{2}-?poster',      # season01-poster, season01poster
+            r's\d{2}-?poster',           # s01-poster, s01poster  
+            r'season\d{1,2}-?poster',    # season1-poster, season12-poster
+            r's\d{1,2}-?poster',         # s1-poster, s12-poster
+            r'season\d{2}-?folder',      # season01-folder
+            r's\d{2}-?folder',           # s01-folder
+            r'season\d{2}-?cover',       # season01-cover
+            r's\d{2}-?cover',            # s01-cover
+        ])

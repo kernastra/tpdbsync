@@ -27,7 +27,8 @@ def run_local_sync():
     # Initialize scanner
     scanner = PosterScanner(
         config.get_poster_extensions(),
-        config.get_poster_names()
+        config.get_poster_names(),
+        config.get_season_poster_patterns()
     )
     
     # Get local folders

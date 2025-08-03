@@ -34,7 +34,8 @@ class PosterSync:
         # Initialize components
         self.scanner = PosterScanner(
             self.config.get_poster_extensions(),
-            self.config.get_poster_names()
+            self.config.get_poster_names(),
+            self.config.get_season_poster_patterns()
         )
         
         self.monitor = FileMonitor(self.config.get_poster_extensions())
@@ -62,6 +63,21 @@ class PosterSync:
         
         local_folders = self.config.get_local_folders()
         remote_paths = self.config.get_remote_paths()
+        
+        # Log which folders will be synced
+        self.logger.info(f"Syncing {len(local_folders)} folder(s):")
+        for media_type, local_folder in local_folders.items():
+            if local_folder.exists():
+                remote_base = remote_paths.get(media_type, "NOT_CONFIGURED")
+                self.logger.info(f"  📁 {media_type.upper()}: {local_folder} → {remote_base}")
+            else:
+                self.logger.warning(f"  ❌ {media_type.upper()}: {local_folder} (does not exist)")
+        
+        # Show TV season poster status
+        if self.config.get_sync_tv_seasons():
+            self.logger.info("  📺 TV season poster syncing: ENABLED")
+        else:
+            self.logger.info("  📺 TV season poster syncing: DISABLED")
         
         with self.remote_client.connection_context():
             for media_type, local_folder in local_folders.items():
@@ -112,25 +128,72 @@ class PosterSync:
             self.logger.debug(f"No posters found for {media_name}")
             return
         
-        # Use the best poster file
-        best_poster = poster_files[0]  # Already sorted by preference
+        # Check if this is a TV show that might have season posters
+        media_folder = None
+        local_folders = self.config.get_local_folders()
         
-        # Construct remote path
-        remote_path = str(PurePosixPath(remote_base) / media_name / f"poster{best_poster.suffix}")
+        # Only check for seasons if TV season syncing is enabled
+        if self.config.get_sync_tv_seasons():
+            # Find the source folder for this media item
+            for media_type, folder in local_folders.items():
+                if media_type == 'tv':  # Only check for seasons in TV folders
+                    potential_folder = folder / media_name
+                    if potential_folder.exists():
+                        media_folder = potential_folder
+                        break
         
+        if media_folder and media_folder.exists():
+            # Use enhanced scanning for TV shows to separate series and season posters
+            series_posters, season_posters = self.scanner.find_posters_and_seasons_in_folder(media_folder)
+            
+            # Sync series poster (main show poster)
+            if series_posters:
+                self.sync_single_poster(media_name, series_posters[0], remote_base, "poster")
+            
+            # Sync season posters
+            for season_id, season_poster_list in season_posters.items():
+                if season_poster_list:
+                    # Create season subfolder path
+                    season_folder = f"Season {season_id}"
+                    self.sync_single_poster(media_name, season_poster_list[0], remote_base, "poster", season_folder)
+        else:
+            # Regular sync for movies and collections (or TV shows without season detection)
+            best_poster = poster_files[0]  # Already sorted by preference
+            self.sync_single_poster(media_name, best_poster, remote_base, "poster")
+    
+    def sync_single_poster(self, media_name: str, poster_file: Path, remote_base: str, 
+                          poster_name: str = "poster", season_folder: str = None) -> None:
+        """
+        Sync a single poster file
+        
+        Args:
+            media_name: Name of the media item (folder name)
+            poster_file: Path to the poster file
+            remote_base: Remote base path
+            poster_name: Name for the poster file (default: "poster")
+            season_folder: Optional season folder name for TV season posters
+        """
         try:
+            # Construct remote path
+            if season_folder:
+                # TV season poster: media/jellyfin/metadata/library/tv/Show Name/Season 01/poster.jpg
+                remote_path = str(PurePosixPath(remote_base) / media_name / season_folder / f"{poster_name}{poster_file.suffix}")
+            else:
+                # Regular poster: media/jellyfin/metadata/library/movies/Movie Name/poster.jpg
+                remote_path = str(PurePosixPath(remote_base) / media_name / f"{poster_name}{poster_file.suffix}")
+            
             # Check file size constraints
-            file_size = best_poster.stat().st_size
+            file_size = poster_file.stat().st_size
             min_size = self.config.get('sync.min_file_size', 1024)
             max_size = self.config.get('sync.max_file_size', 10485760)
             
             if file_size < min_size:
-                self.logger.warning(f"File too small ({file_size} bytes): {best_poster}")
+                self.logger.warning(f"File too small ({file_size} bytes): {poster_file}")
                 self.stats['skipped'] += 1
                 return
             
             if file_size > max_size:
-                self.logger.warning(f"File too large ({file_size} bytes): {best_poster}")
+                self.logger.warning(f"File too large ({file_size} bytes): {poster_file}")
                 self.stats['skipped'] += 1
                 return
             
@@ -138,23 +201,26 @@ class PosterSync:
             overwrite = self.config.get('sync.overwrite_existing', False)
             
             if self.dry_run:
-                self.logger.info(f"DRY RUN: Would upload {best_poster} -> {remote_path}")
+                season_info = f" (Season {season_folder})" if season_folder else ""
+                self.logger.info(f"DRY RUN: Would upload {poster_file}{season_info} -> {remote_path}")
                 self.stats['uploaded'] += 1
             else:
                 # Upload the poster
                 success = self.remote_client.upload_file(
-                    best_poster, 
+                    poster_file, 
                     remote_path, 
                     overwrite=overwrite
                 )
                 
                 if success:
+                    season_info = f" (Season {season_folder})" if season_folder else ""
+                    self.logger.info(f"Uploaded {media_name}{season_info} poster: {poster_file.name}")
                     self.stats['uploaded'] += 1
                 else:
                     self.stats['skipped'] += 1
                     
         except Exception as e:
-            self.logger.error(f"Error syncing {media_name}: {e}")
+            self.logger.error(f"Error syncing {media_name} poster: {e}")
             self.stats['errors'] += 1
     
     def sync_single_file(self, file_path: Path) -> None:
@@ -209,8 +275,21 @@ class PosterSync:
         
         # Add watches for all local folders
         local_folders = self.config.get_local_folders()
+        
+        # Log which folders will be monitored
+        self.logger.info(f"Monitoring {len(local_folders)} folder(s) for changes:")
         for media_type, folder in local_folders.items():
-            self.monitor.add_watch(folder, self.sync_single_file)
+            if folder.exists():
+                self.logger.info(f"  📁 {media_type.upper()}: {folder}")
+                self.monitor.add_watch(folder, self.sync_single_file)
+            else:
+                self.logger.warning(f"  ❌ {media_type.upper()}: {folder} (does not exist)")
+        
+        # Show TV season poster status
+        if self.config.get_sync_tv_seasons():
+            self.logger.info("  📺 TV season poster syncing: ENABLED")
+        else:
+            self.logger.info("  📺 TV season poster syncing: DISABLED")
         
         # Start monitoring
         try:

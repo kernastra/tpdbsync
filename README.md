@@ -10,7 +10,8 @@ A comprehensive Python application that automatically syncs movie, TV show, and 
 - [🚀 Quick Start](#-quick-start)
 - [⚙️ Configuration](#️-configuration)
 - [📁 Directory Structure](#-directory-structure)
-- [🐳 Docker Usage](#-docker-usage)
+- [� TV Season Posters](TV_SEASON_POSTERS.md) - **New Feature Guide**
+- [�🐳 Docker Usage](#-docker-usage)
 - [🛠️ Management Commands](#️-management-commands)
 - [📊 Command Line Options](#-command-line-options)
 - [🔍 Monitoring and Logs](#-monitoring-and-logs)
@@ -35,6 +36,7 @@ TPDB Poster Sync acts as the connector that automatically transfers poster files
 
 - **Automatic Poster Sync**: Syncs `.jpg`, `.jpeg`, and `.png` poster files
 - **Multiple Libraries**: Supports movies, TV shows, and collections
+- **TV Season Posters**: 🆕 Automatically syncs both series and individual season posters
 - **Real-time Monitoring**: Watches for file changes and syncs automatically
 - **Mount-based SMB**: Uses system CIFS mounts for reliable file transfers
 - **Dry Run Mode**: Preview changes without making modifications
@@ -126,6 +128,18 @@ sync:
   overwrite_existing: false
   watch_folders: true
   sync_interval: 300
+  
+  # TV Season poster support (NEW!)
+  tv_season_posters: true  # Enable TV season poster syncing
+  season_poster_patterns:  # Filename patterns for season posters
+    - "season\\d{2}-?poster"      # season01-poster, season01poster
+    - "s\\d{2}-?poster"           # s01-poster, s01poster  
+    - "season\\d{1,2}-?poster"    # season1-poster, season12-poster
+    - "s\\d{1,2}-?poster"         # s1-poster, s12-poster
+    - "season\\d{2}-?folder"      # season01-folder
+    - "s\\d{2}-?folder"           # s01-folder
+    - "season\\d{2}-?cover"       # season01-cover
+    - "s\\d{2}-?cover"            # s01-cover
 
 # Logging
 logging:
@@ -144,14 +158,38 @@ cp .env.example .env
 
 ## 📁 Directory Structure
 
+### TV Season Poster Naming
+
+For TV shows, the application supports both series-level and season-level posters:
+
+**Series Posters** (main show poster):
+- `poster.jpg` / `poster.png`
+- `folder.jpg` / `folder.png` 
+- `cover.jpg` / `cover.png`
+
+**Season Posters** (individual season posters):
+- `season01-poster.jpg` (Season 1)
+- `season02-poster.png` (Season 2)
+- `s01-poster.jpg` (Season 1, short format)
+- `s12-folder.png` (Season 12, alternative naming)
+- `season01-cover.jpg` (Season 1, cover style)
+
+The application automatically detects season numbers and creates the appropriate `Season XX` folders on the remote server.
+
 ### Local Directory Structure
 ```
 /path/to/posters/
 ├── Poster/
 │   ├── Movie Name (Year)/
 │   │   └── poster.jpg
-│   └── TV Show Name (Year)/
-│       └── poster.jpg
+│   ├── TV Show Name (Year)/
+│   │   ├── poster.jpg          # Series poster
+│   │   ├── season01-poster.jpg # Season 1 poster
+│   │   ├── season02-poster.jpg # Season 2 poster
+│   │   └── s03-poster.png      # Season 3 poster (alternative naming)
+│   └── Another TV Show/
+│       ├── poster.png
+│       └── season01-folder.jpg
 └── Collections/
     └── Collection Name/
         └── poster.jpg
@@ -164,8 +202,18 @@ cp .env.example .env
 │   └── Movie Name (Year)/
 │       └── poster.jpg
 ├── tv/
-│   └── TV Show Name (Year)/
-│       └── poster.jpg
+│   ├── TV Show Name (Year)/
+│   │   ├── poster.jpg           # Series poster
+│   │   ├── Season 01/
+│   │   │   └── poster.jpg       # Season 1 poster
+│   │   ├── Season 02/
+│   │   │   └── poster.jpg       # Season 2 poster
+│   │   └── Season 03/
+│   │       └── poster.png       # Season 3 poster
+│   └── Another TV Show/
+│       ├── poster.png
+│       └── Season 01/
+│           └── poster.jpg
 └── collections/
     └── Collection Name/
         └── poster.jpg

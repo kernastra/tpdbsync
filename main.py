@@ -57,6 +57,14 @@ def main():
         
         logger = logging.getLogger(__name__)
         logger.info("Starting TPDB Poster Sync")
+        logger.info(f"Configuration file: {args.config}")
+        
+        # Show basic configuration info
+        local_folders = config.get_local_folders()
+        remote_paths = config.get_remote_paths()
+        logger.info(f"Local base path: {config.get('local.base_path')}")
+        logger.info(f"Remote server: {config.get('remote.server')}:{config.get('remote.share')}")
+        logger.info(f"Configured folders: {', '.join(local_folders.keys())}")
         
         if args.dry_run:
             logger.info("DRY RUN MODE - No files will be modified")

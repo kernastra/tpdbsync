@@ -50,7 +50,8 @@ def cmd_scan_local(config: Config) -> None:
     
     scanner = PosterScanner(
         config.get_poster_extensions(),
-        config.get_poster_names()
+        config.get_poster_names(),
+        config.get_season_poster_patterns()
     )
     
     local_folders = config.get_local_folders()

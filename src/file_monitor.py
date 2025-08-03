@@ -137,16 +137,27 @@ class FileMonitor:
 class PosterScanner:
     """Scan directories for poster files"""
     
-    def __init__(self, poster_extensions: List[str], poster_names: List[str]):
+    def __init__(self, poster_extensions: List[str], poster_names: List[str], season_patterns: List[str] = None):
         """
         Initialize scanner
         
         Args:
             poster_extensions: List of supported file extensions
             poster_names: List of common poster filenames
+            season_patterns: List of regex patterns for season posters
         """
         self.poster_extensions = [ext.lower() for ext in poster_extensions]
         self.poster_names = [name.lower() for name in poster_names]
+        self.season_patterns = season_patterns or [
+            r'season\d{2}-?poster',      # season01-poster, season01poster
+            r's\d{2}-?poster',           # s01-poster, s01poster  
+            r'season\d{1,2}-?poster',    # season1-poster, season12-poster
+            r's\d{1,2}-?poster',         # s1-poster, s12-poster
+            r'season\d{2}-?folder',      # season01-folder
+            r's\d{2}-?folder',           # s01-folder
+            r'season\d{2}-?cover',       # season01-cover
+            r's\d{2}-?cover',            # s01-cover
+        ]
         self.logger = logging.getLogger(__name__)
     
     def is_poster_file(self, file_path: Path) -> bool:
@@ -173,6 +184,28 @@ class PosterScanner:
         # Check if filename contains poster keywords
         for poster_name in self.poster_names:
             if poster_name in filename:
+                return True
+        
+        # Check for season poster patterns
+        if self.is_season_poster(filename):
+            return True
+        
+        return False
+    
+    def is_season_poster(self, filename: str) -> bool:
+        """
+        Check if filename matches season poster patterns
+        
+        Args:
+            filename: Filename to check (without extension)
+            
+        Returns:
+            True if filename appears to be a season poster
+        """
+        import re
+        
+        for pattern in self.season_patterns:
+            if re.match(pattern, filename):
                 return True
         
         return False
@@ -235,6 +268,81 @@ class PosterScanner:
         ))
         
         return posters
+    
+    def find_posters_and_seasons_in_folder(self, folder: Path) -> tuple:
+        """
+        Find both series posters and season posters in a specific folder
+        
+        Args:
+            folder: Folder to search
+            
+        Returns:
+            Tuple of (series_posters, season_posters_dict)
+            where season_posters_dict maps season identifiers to poster lists
+        """
+        import re
+        
+        series_posters = []
+        season_posters = {}
+        
+        for file_path in folder.iterdir():
+            if file_path.is_file() and self.is_poster_file(file_path):
+                filename = file_path.stem.lower()
+                
+                # Check if this is a season poster
+                if self.is_season_poster(filename):
+                    # Extract season identifier
+                    season_id = self.extract_season_identifier(filename)
+                    if season_id:
+                        if season_id not in season_posters:
+                            season_posters[season_id] = []
+                        season_posters[season_id].append(file_path)
+                else:
+                    # This is a series poster
+                    series_posters.append(file_path)
+        
+        # Sort series posters by preference
+        series_posters.sort(key=lambda p: (
+            self.poster_names.index(p.stem.lower()) if p.stem.lower() in self.poster_names else 999,
+            self.poster_extensions.index(p.suffix.lower())
+        ))
+        
+        # Sort season posters within each season by preference
+        for season_id in season_posters:
+            season_posters[season_id].sort(key=lambda p: (
+                self.poster_extensions.index(p.suffix.lower())
+            ))
+        
+        return series_posters, season_posters
+    
+    def extract_season_identifier(self, filename: str) -> str:
+        """
+        Extract season identifier from filename
+        
+        Args:
+            filename: Filename to analyze
+            
+        Returns:
+            Season identifier (e.g., "01", "1") or empty string if not found
+        """
+        import re
+        
+        # Patterns to extract season numbers
+        patterns = [
+            r'season(\d{2})',     # season01
+            r's(\d{2})',          # s01
+            r'season(\d{1,2})',   # season1, season12
+            r's(\d{1,2})',        # s1, s12
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, filename)
+            if match:
+                season_num = match.group(1)
+                # Normalize to 2-digit format
+                return season_num.zfill(2)
+        
+        return ""
     
     def get_best_poster(self, folder: Path) -> Optional[Path]:
         """
