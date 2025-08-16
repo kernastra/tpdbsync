@@ -2,6 +2,9 @@
 
 A comprehensive Python application that automatically syncs movie, TV show, and collection posters from local directories to remote Jellyfin metadata storage on TrueNAS or other SMB/CIFS shares.
 
+## UPDATE - 08/15/2025 
+*Poster files are now automatically placed in the correct movie and TV show folders. This means there is no need to manually connect the separate movie and TV show folders in your Jellyfin metadata. So when your media server (Plex, Jellyfin, Emby) scans your media, the posters will be automatically displayed as well.*
+
 ## � Table of Contents
 
 - [🔄 Purpose & Integration](#-purpose--integration)
@@ -35,6 +38,7 @@ TPDB Poster Sync acts as the connector that automatically transfers poster files
 ## 🎯 Features
 
 - **Automatic Poster Sync**: Syncs `.jpg`, `.jpeg`, and `.png` poster files
+- **Posters Placed in Existing Folders**: Posters are now placed directly in the existing movie or TV show folder on the remote server (e.g., `/movies/Movie Name (Year)/poster.jpg`), not in a separate poster-only directory. This ensures maximum compatibility with Jellyfin and other media managers.
 - **Multiple Libraries**: Supports movies, TV shows, and collections
 - **TV Season Posters**: 🆕 Automatically syncs both series and individual season posters
 - **Real-time Monitoring**: Watches for file changes and syncs automatically
@@ -200,10 +204,10 @@ The application automatically detects season numbers and creates the appropriate
 /share/media/jellyfin/metadata/library/
 ├── movies/
 │   └── Movie Name (Year)/
-│       └── poster.jpg
+│       └── poster.jpg           # Poster is placed directly in the movie folder
 ├── tv/
 │   ├── TV Show Name (Year)/
-│   │   ├── poster.jpg           # Series poster
+│   │   ├── poster.jpg           # Series poster in show folder
 │   │   ├── Season 01/
 │   │   │   └── poster.jpg       # Season 1 poster
 │   │   ├── Season 02/
@@ -215,8 +219,8 @@ The application automatically detects season numbers and creates the appropriate
 │       └── Season 01/
 │           └── poster.jpg
 └── collections/
-    └── Collection Name/
-        └── poster.jpg
+  └── Collection Name/
+    └── poster.jpg
 ```
 
 ## 🐳 Docker Usage
@@ -389,6 +393,7 @@ python -c "from src.config import Config; c=Config('config.yaml'); print(c.confi
 
 This application has been successfully tested and deployed with:
 
+- **Posters placed directly in the correct movie and TV show folders** for maximum compatibility
 - **75 poster files** uploaded successfully (36 movies + 36 TV shows + 3 collections)
 - **100% success rate** with zero errors
 - **TrueNAS integration** working perfectly

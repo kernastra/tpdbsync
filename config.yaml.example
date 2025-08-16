@@ -11,17 +11,17 @@ local:
 
 # Remote server settings
 remote:
-  server: "192.168.1.187"
-  share: "apollo"
+  server: "Your Media Server IP"
+  share: "Your SMB Share Name"
   username: "your_username"
   password: "your_password"
   domain: "WORKGROUP"
   
   # Remote paths (within the share)
   paths:
-    movies: "media/jellyfin/metadata/library/movies"
-    tv: "media/jellyfin/metadata/library/tv"
-    collections: "media/jellyfin/metadata/library/collections"
+    movies: "Your Movie Library Path"
+    tv: "Your TV Show Library Path"
+    collections: "Your Collections Path"
 
 # Sync settings
 sync:

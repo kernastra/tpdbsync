@@ -2,8 +2,10 @@
 Main poster sync logic
 """
 
+
 import logging
 import time
+import os
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
 
@@ -111,9 +113,9 @@ class PosterSync:
         # If this is a shared folder (movies and TV in same folder), 
         # we need to sync all items for each media type
         for media_name, poster_files in poster_map.items():
-            self.sync_media_item(media_name, poster_files, remote_base)
+            self.sync_media_item(media_name, poster_files, remote_base, media_type=media_type)
     
-    def sync_media_item(self, media_name: str, poster_files: List[Path], remote_base: str) -> None:
+    def sync_media_item(self, media_name: str, poster_files: List[Path], remote_base: str, media_type: str = None) -> None:
         """
         Sync posters for a specific media item
         
@@ -148,21 +150,21 @@ class PosterSync:
             
             # Sync series poster (main show poster)
             if series_posters:
-                self.sync_single_poster(media_name, series_posters[0], remote_base, "poster")
+                self.sync_single_poster(media_name, series_posters[0], remote_base, "poster", media_type=media_type)
             
             # Sync season posters
             for season_id, season_poster_list in season_posters.items():
                 if season_poster_list:
                     # Create season subfolder path
                     season_folder = f"Season {season_id}"
-                    self.sync_single_poster(media_name, season_poster_list[0], remote_base, "poster", season_folder)
+                    self.sync_single_poster(media_name, season_poster_list[0], remote_base, "poster", season_folder, media_type=media_type)
         else:
             # Regular sync for movies and collections (or TV shows without season detection)
             best_poster = poster_files[0]  # Already sorted by preference
-            self.sync_single_poster(media_name, best_poster, remote_base, "poster")
+            self.sync_single_poster(media_name, best_poster, remote_base, "poster", media_type=media_type)
     
     def sync_single_poster(self, media_name: str, poster_file: Path, remote_base: str, 
-                          poster_name: str = "poster", season_folder: str = None) -> None:
+                          poster_name: str = "poster", season_folder: str = None, media_type: str = None) -> None:
         """
         Sync a single poster file
         
@@ -172,14 +174,72 @@ class PosterSync:
             remote_base: Remote base path
             poster_name: Name for the poster file (default: "poster")
             season_folder: Optional season folder name for TV season posters
+            media_type: Type of media (movies, tv, collections)
         """
         try:
-            # Construct remote path
-            if season_folder:
-                # TV season poster: media/jellyfin/metadata/library/tv/Show Name/Season 01/poster.jpg
-                remote_path = str(PurePosixPath(remote_base) / media_name / season_folder / f"{poster_name}{poster_file.suffix}")
+            import re
+            def find_best_remote_folder(remote_base, media_name):
+                """Find an existing remote folder matching media_name, ignoring special chars (-,_,:,;), case-insensitive, and normalizing spaces. Only create if no match exists."""
+                import re
+                def normalize(s):
+                    s = re.sub(r'[-_:;]', '', s)
+                    s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
+                    return s.strip().lower()
+                media_name_norm = normalize(media_name)
+                remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
+                if not os.path.exists(remote_dir):
+                    return media_name  # Default to exact name if base doesn't exist
+                for folder in os.listdir(remote_dir):
+                    folder_path = os.path.join(remote_dir, folder)
+                    if not os.path.isdir(folder_path):
+                        continue
+                    folder_norm = normalize(folder)
+                    if folder_norm == media_name_norm:
+                        return folder  # Use the existing folder
+                # If no match, do NOT create a new folder, just return None
+                return None
+
+            # If config says to place poster in movie folder and this is a movie
+            if self.config.get('sync.poster_in_movie_folder', False) and (media_type == 'movies' and not season_folder):
+                # Find the movie file in the movie folder
+                movie_folder = None
+                local_folders = self.config.get_local_folders()
+                if 'movies' in local_folders:
+                    movie_folder = local_folders['movies'] / media_name
+                # Use best-matching remote folder
+                remote_folder_name = find_best_remote_folder(remote_base, media_name)
+                if remote_folder_name is not None:
+                    if movie_folder and movie_folder.exists():
+                        # Find a movie file (by extension)
+                        movie_exts = ['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.m4v']
+                        movie_files = [f for f in movie_folder.iterdir() if f.is_file() and f.suffix.lower() in movie_exts]
+                        if movie_files:
+                            # Place poster as poster.jpg in the same folder as the movie file
+                            remote_path = str(PurePosixPath(remote_base) / remote_folder_name / f"poster{poster_file.suffix}")
+                        else:
+                            self.logger.warning(f"No movie file found in {movie_folder}, placing poster in default location.")
+                            remote_path = str(PurePosixPath(remote_base) / remote_folder_name / f"{poster_name}{poster_file.suffix}")
+                    else:
+                        self.logger.warning(f"Movie folder not found for {media_name}, placing poster in default location.")
+                        remote_path = str(PurePosixPath(remote_base) / remote_folder_name / f"{poster_name}{poster_file.suffix}")
+                else:
+                    self.logger.warning(f"No matching remote folder found for {media_name}, skipping poster placement.")
+                    self.stats['skipped'] += 1
+                    return
+            elif media_type in ('tv', 'movies'):
+                # For TV and movies, use best-matching remote folder
+                remote_folder_name = find_best_remote_folder(remote_base, media_name)
+                if remote_folder_name is not None:
+                    if season_folder:
+                        remote_path = str(PurePosixPath(remote_base) / remote_folder_name / season_folder / f"{poster_name}{poster_file.suffix}")
+                    else:
+                        remote_path = str(PurePosixPath(remote_base) / remote_folder_name / f"{poster_name}{poster_file.suffix}")
+                else:
+                    self.logger.warning(f"No matching remote folder found for {media_name}, skipping poster placement.")
+                    self.stats['skipped'] += 1
+                    return
             else:
-                # Regular poster: media/jellyfin/metadata/library/movies/Movie Name/poster.jpg
+                # Regular poster: media/jellyfin/metadata/library/collections/Collection Name/poster.jpg
                 remote_path = str(PurePosixPath(remote_base) / media_name / f"{poster_name}{poster_file.suffix}")
             
             # Check file size constraints
