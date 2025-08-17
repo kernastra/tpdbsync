@@ -239,17 +239,6 @@ class PosterSync:
                     dest = remote_season_folder / f"season{season_num_zfill}{file.suffix}"
                     shutil.copy2(str(file), str(dest))
                     self.logger.info(f"Copied season poster {file.name} to {dest}")
-        self.stats['processed'] += 1
-        
-        if not poster_files:
-         if media_type == 'tv':
-            # For TV, sync entire folder structure
-            for show_folder in local_folder.iterdir():
-                if show_folder.is_dir():
-                    self.sync_tv_show_folder(show_folder, remote_base)
-        else:
-            for media_name, poster_files in poster_map.items():
-                self.sync_media_item(media_name, poster_files, remote_base, media_type=media_type)
         """
         Sync an entire TV show folder: main series poster and all season posters.
         """
