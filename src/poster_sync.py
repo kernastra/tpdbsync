@@ -4,6 +4,7 @@ Main poster sync logic
 
 
 import logging
+import shutil
 import time
 import os
 from pathlib import Path, PurePosixPath
@@ -16,6 +17,68 @@ from .file_monitor import FileMonitor, PosterScanner
 
 
 class PosterSync:
+    def try_match_and_move(self, file_path: Path) -> bool:
+        """
+        Try to match a poster file to a remote folder and move it if possible.
+        Returns True if matched and moved, False otherwise.
+        """
+        # Determine if this is a movie, tv, or season poster by scanning remote folders
+        # Use the same normalization logic as sync
+        import re
+        file_stem = file_path.stem
+        file_ext = file_path.suffix
+        # Try to match to movies
+        local_folders = self.config.get_local_folders()
+        remote_paths = self.config.get_remote_paths()
+        def normalize(s):
+            s = re.sub(r"[-_:;&']", '', s)
+            s = re.sub(r'\s+',' ', s)
+            return s.strip().lower()
+        # Try movies
+        if 'movies' in remote_paths:
+            remote_base = remote_paths['movies']
+            remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
+            if os.path.exists(remote_dir):
+                for folder in os.listdir(remote_dir):
+                    folder_path = os.path.join(remote_dir, folder)
+                    if not os.path.isdir(folder_path):
+                        continue
+                    if normalize(folder) in normalize(file_stem):
+                        dest = Path(folder_path) / f"poster{file_ext}"
+                        try:
+                            shutil.move(str(file_path), str(dest))
+                            self.logger.info(f"Matched and moved {file_path.name} to {dest}")
+                            return True
+                        except Exception as e:
+                            self.logger.error(f"Failed to move {file_path} to {dest}: {e}")
+                            return False
+        # Try TV shows
+        if 'tv' in remote_paths:
+            remote_base = remote_paths['tv']
+            remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
+            if os.path.exists(remote_dir):
+                for folder in os.listdir(remote_dir):
+                    folder_path = os.path.join(remote_dir, folder)
+                    if not os.path.isdir(folder_path):
+                        continue
+                    if normalize(folder) in normalize(file_stem):
+                        # Check for season poster
+                        season_match = re.search(r'season(\d{1,2})', file_stem, re.IGNORECASE)
+                        if season_match:
+                            season_num = season_match.group(1).zfill(2)
+                            season_folder = Path(folder_path) / f"Season {season_num}"
+                            season_folder.mkdir(exist_ok=True)
+                            dest = season_folder / f"season{season_num}{file_ext}"
+                        else:
+                            dest = Path(folder_path) / f"poster{file_ext}"
+                        try:
+                            shutil.move(str(file_path), str(dest))
+                            self.logger.info(f"Matched and moved {file_path.name} to {dest}")
+                            return True
+                        except Exception as e:
+                            self.logger.error(f"Failed to move {file_path} to {dest}: {e}")
+                            return False
+        return False
     """Main poster synchronization class"""
     
     def __init__(self, config: Config, dry_run: bool = False):
@@ -182,7 +245,7 @@ class PosterSync:
                 """Find an existing remote folder matching media_name, ignoring special chars (-,_,:,;), case-insensitive, and normalizing spaces. Only create if no match exists."""
                 import re
                 def normalize(s):
-                    s = re.sub(r'[-_:;]', '', s)
+                    s = re.sub(r"[-_:;&']", '', s)
                     s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
                     return s.strip().lower()
                 media_name_norm = normalize(media_name)
@@ -231,7 +294,15 @@ class PosterSync:
                 remote_folder_name = find_best_remote_folder(remote_base, media_name)
                 if remote_folder_name is not None:
                     if season_folder:
-                        remote_path = str(PurePosixPath(remote_base) / remote_folder_name / season_folder / f"{poster_name}{poster_file.suffix}")
+                        # Extract season number from season_folder (e.g., 'Season 01' -> '01')
+                        import re
+                        match = re.search(r'Season (\d{1,2})', season_folder, re.IGNORECASE)
+                        if match:
+                            season_num = match.group(1).zfill(2)
+                        else:
+                            season_num = '01'  # fallback
+                        # Always name as 'seasonXX.ext' for Plex compatibility
+                        remote_path = str(PurePosixPath(remote_base) / remote_folder_name / season_folder / f"season{season_num}{poster_file.suffix}")
                     else:
                         remote_path = str(PurePosixPath(remote_base) / remote_folder_name / f"{poster_name}{poster_file.suffix}")
                 else:

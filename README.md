@@ -1,9 +1,26 @@
+
+# 🚀 TPDB Poster Sync: Fully Standalone Poster Management
+
+**The application now manages all poster intake, unmatched, and remote folder logic automatically.**
+
+- Drop poster files or .zip archives into the `intake` folder—no manual sorting required.
+- The app will extract, sort, and move files to the correct locations, handling unmatched and TV/movie separation for you.
+- TV series poster packs are grouped by show, movies are grouped by movie, and unmatched files are retried automatically.
+- No external scripts or manual folder management needed: just run the app and let it handle everything.
+
+## How It Works
+
+1. **Intake Folder:** Drop any poster files or .zip archives into the `intake` folder.
+2. **Automatic Sorting:**
+  - Movie posters are matched and moved to the correct movie folder.
+  - TV series poster packs (with season posters) are grouped by show in `intake/unmatched/tv/` until a match is found.
+  - Unmatched movie posters are grouped in `intake/unmatched/movies/`.
+3. **Continuous Monitoring:** The app watches for new folders on your media share and moves unmatched posters as soon as a match appears.
+
+
 # TPDB Poster Sync
 
-A comprehensive Python application that automatically syncs movie, TV show, and collection posters from local directories to remote Jellyfin metadata storage on TrueNAS or other SMB/CIFS shares.
-
-## UPDATE - 08/15/2025 
-*Poster files are now automatically placed in the correct movie and TV show folders. This means there is no need to manually connect the separate movie and TV show folders in your Jellyfin metadata. So when your media server (Plex, Jellyfin, Emby) scans your media, the posters will be automatically displayed as well.*
+A comprehensive Python application that automatically syncs movie, TV show, and collection posters from local directories to remote media metadata storage.
 
 ## � Table of Contents
 
@@ -26,14 +43,6 @@ A comprehensive Python application that automatically syncs movie, TV show, and 
 - [📄 License](#-license)
 - [🙏 Acknowledgments](#-acknowledgments)
 
-## �🔄 Purpose & Integration
-
-This program serves as a **middleman solution** that bridges the gap between poster management tools and Jellyfin's metadata storage. It relies on having the following programs installed and running:
-
-- **[JellyfinUpdatePoster](https://github.com/Iceshadow1404/JellyfinUpdatePoster)** - For downloading and managing poster files
-- **[Jellyfin.Plugin.LocalPosters](https://github.com/NooNameR/Jellyfin.Plugin.LocalPosters/)** - For enabling Jellyfin to use local poster files
-
-TPDB Poster Sync acts as the connector that automatically transfers poster files from your local management system to your Jellyfin server's metadata storage, ensuring seamless poster integration.
 
 ## 🎯 Features
 
@@ -43,7 +52,6 @@ TPDB Poster Sync acts as the connector that automatically transfers poster files
 - **TV Season Posters**: 🆕 Automatically syncs both series and individual season posters
 - **Real-time Monitoring**: Watches for file changes and syncs automatically
 - **Mount-based SMB**: Uses system CIFS mounts for reliable file transfers
-- **Dry Run Mode**: Preview changes without making modifications
 - **Docker Support**: Ready-to-use Docker containers and compose files
 - **Comprehensive Logging**: Detailed logs with configurable levels
 - **Error Handling**: Robust error handling and recovery
@@ -102,28 +110,31 @@ python main.py
 
 ## ⚙️ Configuration
 
+
 ### Main Configuration (`config.yaml`)
 
 ```yaml
 # Local poster directories
 local:
-  base_path: "/path/to/your/posters"
-  poster_folder: "Poster"
-  collections_folder: "Collections"
+  base_path: "/media/posters"           # Path to your local poster root
+  folders:
+    movies: "movies"                    # Subfolder for movie posters
+    tv: "tv"                            # Subfolder for TV posters
+    collections: "collections"          # Subfolder for collections
 
 # Remote server settings
 remote:
-  server: "192.168.1.187"
-  share: "apollo"
+  server: "Your Media Server IP"
+  share: "Your SMB Share Name"
   username: "your_username"
   password: "your_password"
   domain: "WORKGROUP"
   
   # Remote paths (within the share)
   paths:
-    movies: "media/jellyfin/metadata/library/movies"
-    tv: "media/jellyfin/metadata/library/tv"
-    collections: "media/jellyfin/metadata/library/collections"
+    movies: "media/movies"
+    tv: "media/tv"
+    collections: "media/collections"
 
 # Sync settings
 sync:
@@ -133,9 +144,9 @@ sync:
   watch_folders: true
   sync_interval: 300
   
-  # TV Season poster support (NEW!)
-  tv_season_posters: true  # Enable TV season poster syncing
-  season_poster_patterns:  # Filename patterns for season posters
+  # TV Season poster support
+  tv_season_posters: true  # Enable/disable TV season poster syncing
+  season_poster_patterns:   # Patterns to match season poster files
     - "season\\d{2}-?poster"      # season01-poster, season01poster
     - "s\\d{2}-?poster"           # s01-poster, s01poster  
     - "season\\d{1,2}-?poster"    # season1-poster, season12-poster
@@ -144,6 +155,10 @@ sync:
     - "s\\d{2}-?folder"           # s01-folder
     - "season\\d{2}-?cover"       # season01-cover
     - "s\\d{2}-?cover"            # s01-cover
+  
+  # File size constraints
+  min_file_size: 1024      # 1KB minimum
+  max_file_size: 10485760  # 10MB maximum
 
 # Logging
 logging:
@@ -180,84 +195,86 @@ For TV shows, the application supports both series-level and season-level poster
 
 The application automatically detects season numbers and creates the appropriate `Season XX` folders on the remote server.
 
-### Local Directory Structure
+
+### Example Local Directory Structure
 ```
-/path/to/posters/
-├── Poster/
+/media/posters/
+├── movies/
 │   ├── Movie Name (Year)/
 │   │   └── poster.jpg
+│   └── Another Movie (Year)/
+│       └── poster.png
+├── tv/
 │   ├── TV Show Name (Year)/
-│   │   ├── poster.jpg          # Series poster
-│   │   ├── season01-poster.jpg # Season 1 poster
-│   │   ├── season02-poster.jpg # Season 2 poster
-│   │   └── s03-poster.png      # Season 3 poster (alternative naming)
+│   │   ├── poster.jpg
+│   │   ├── season01-poster.jpg
+│   │   └── season02-poster.png
 │   └── Another TV Show/
-│       ├── poster.png
-│       └── season01-folder.jpg
-└── Collections/
+│       ├── poster.jpg
+│       └── season01-poster.jpg
+└── collections/
     └── Collection Name/
         └── poster.jpg
 ```
 
-### Remote Directory Structure (Created Automatically)
+### Example Remote Directory Structure (Created Automatically)
 ```
-/share/media/jellyfin/metadata/library/
-├── movies/
-│   └── Movie Name (Year)/
-│       └── poster.jpg           # Poster is placed directly in the movie folder
-├── tv/
-│   ├── TV Show Name (Year)/
-│   │   ├── poster.jpg           # Series poster in show folder
-│   │   ├── Season 01/
-│   │   │   └── poster.jpg       # Season 1 poster
-│   │   ├── Season 02/
-│   │   │   └── poster.jpg       # Season 2 poster
-│   │   └── Season 03/
-│   │       └── poster.png       # Season 3 poster
-│   └── Another TV Show/
-│       ├── poster.png
-│       └── Season 01/
-│           └── poster.jpg
-└── collections/
+/media/movies/
+  └── Movie Name (Year)/
+      └── poster.jpg
+/media/tv/
+  └── TV Show Name (Year)/
+      ├── poster.jpg
+      └── Season 01/
+          └── season01.jpg
+/media/collections/
   └── Collection Name/
-    └── poster.jpg
+      └── poster.jpg
 ```
 
 ## 🐳 Docker Usage
 
-### Using Docker Compose
+### Using Docker Compose (Recommended)
 
-```bash
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your settings
+1. **Build and Start the Container:**
+  ```bash
+  docker-compose up -d --build
+  ```
 
-# Run with Docker Compose
-docker-compose up -d
+2. **Configure Volumes:**
+  - `./intake:/app/intake` — Intake folder for poster files/zips
+  - `./config.yaml:/app/config.yaml:ro` — Main configuration file (read-only)
+  - `./poster_sync.log:/app/poster_sync.log` — Log file
+  - Mount your media folders as needed (uncomment and edit in `docker-compose.yml`):
+    - `/media/movies:/media/movies`
+    - `/media/tv:/media/tv`
 
-# View logs
-docker-compose logs -f
-```
+3. **View Logs:**
+  ```bash
+  docker-compose logs -f
+  ```
 
-### Manual Docker Build
+### Manual Docker Build/Run
 
-```bash
-# Build image
-docker build -t tpdbsync .
+1. **Build the Image:**
+  ```bash
+  docker build -t tpdbsync .
+  ```
 
-# Run container
-docker run -d \
-  --name tpdbsync \
-  --cap-add SYS_ADMIN \
-  --device /dev/fuse \
-  --security-opt apparmor:unconfined \
-  -v /path/to/local/posters:/app/posters \
-  -e REMOTE_SERVER=192.168.1.187 \
-  -e REMOTE_SHARE=apollo \
-  -e REMOTE_USERNAME=your_username \
-  -e REMOTE_PASSWORD=your_password \
-  tpdbsync
-```
+2. **Run the Container:**
+  ```bash
+  docker run -d \
+    --name tpdbsync \
+    --cap-add SYS_ADMIN \
+    --device /dev/fuse \
+    --security-opt apparmor:unconfined \
+    -v $(pwd)/intake:/app/intake \
+    -v $(pwd)/config.yaml:/app/config.yaml:ro \
+    -v $(pwd)/poster_sync.log:/app/poster_sync.log \
+    # -v /media/movies:/media/movies \
+    # -v /media/tv:/media/tv \
+    tpdbsync
+  ```
 
 ## 🛠️ Management Commands
 
@@ -427,7 +444,6 @@ This program functions as a middleman between excellent existing tools and relie
 - Supports TrueNAS and other NAS solutions
 - Mount-based approach for reliable file transfers
 
-**Note**: This application requires both of the above tools to be properly installed and configured to function as intended. TPDB Poster Sync serves as the automated bridge that connects your poster management workflow to your Jellyfin server.
 
 ---
 

@@ -11,7 +11,9 @@ from pathlib import Path
 
 from src.config import Config
 from src.poster_sync import PosterSync
+
 from src.logger import setup_logging
+from src.intake_monitor import IntakeMonitor
 
 
 def main():
@@ -71,14 +73,28 @@ def main():
         
         # Initialize poster sync
         sync = PosterSync(config, dry_run=args.dry_run)
-        
+
+        # Intake and unmatched folders (always fixed)
+        intake_folder = Path("intake")
+        unmatched_folder = intake_folder / "unmatched"
+        intake_folder.mkdir(exist_ok=True)
+        unmatched_folder.mkdir(exist_ok=True)
+        intake_monitor = IntakeMonitor(sync, intake_folder, unmatched_folder)
+
         # Run sync
         if args.once:
             logger.info("Running one-time sync")
             sync.sync_all()
+            intake_monitor.process_intake()
+            intake_monitor.process_unmatched()
         else:
             logger.info("Starting continuous monitoring")
+            import time
             sync.start_monitoring()
+            while True:
+                intake_monitor.process_intake()
+                intake_monitor.process_unmatched()
+                time.sleep(10)
             
     except KeyboardInterrupt:
         logging.getLogger(__name__).info("Interrupted by user")

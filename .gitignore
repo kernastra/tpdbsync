@@ -1,3 +1,5 @@
+# Ignore all files in intake and subfolders
+intake/
 # TPDBSYNC PROJECT GITIGNORE
 # Python cache and build
 __pycache__/

@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  tpdbsync:
+    build: .
+    container_name: tpdbsync
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./intake:/app/intake
+      - ./config.yaml:/app/config.yaml:ro
+      - ./poster_sync.log:/app/poster_sync.log
+      # Mount your media folders as needed:
+      # - /media/movies:/media/movies
+      # - /media/tv:/media/tv
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
