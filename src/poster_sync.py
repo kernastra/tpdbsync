@@ -30,9 +30,11 @@ class PosterSync:
         # Try to match to movies
         local_folders = self.config.get_local_folders()
         remote_paths = self.config.get_remote_paths()
-        def normalize(s):
+        def normalize(s, remove_year=False):
             s = re.sub(r"[-_:;&']", '', s)
             s = re.sub(r'\s+',' ', s)
+            if remove_year:
+                s = re.sub(r'\(\d{4}\)', '', s)  # Remove (YYYY)
             return s.strip().lower()
         # Try movies
         if 'movies' in remote_paths:
@@ -43,7 +45,7 @@ class PosterSync:
                     folder_path = os.path.join(remote_dir, folder)
                     if not os.path.isdir(folder_path):
                         continue
-                    if normalize(folder) in normalize(file_stem):
+                    if normalize(folder) == normalize(file_stem):
                         dest = Path(folder_path) / f"poster{file_ext}"
                         try:
                             shutil.move(str(file_path), str(dest))
@@ -52,7 +54,7 @@ class PosterSync:
                         except Exception as e:
                             self.logger.error(f"Failed to move {file_path} to {dest}: {e}")
                             return False
-        # Try TV shows
+        # Try TV shows (remove year in parentheses for matching)
         if 'tv' in remote_paths:
             remote_base = remote_paths['tv']
             remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
@@ -61,7 +63,7 @@ class PosterSync:
                     folder_path = os.path.join(remote_dir, folder)
                     if not os.path.isdir(folder_path):
                         continue
-                    if normalize(folder) in normalize(file_stem):
+                    if normalize(folder, remove_year=True) == normalize(file_stem, remove_year=True):
                         # Check for season poster
                         season_match = re.search(r'season(\d{1,2})', file_stem, re.IGNORECASE)
                         if season_match:
@@ -172,59 +174,129 @@ class PosterSync:
         
         # Scan for posters organized by media item folders
         poster_map = self.scanner.scan_directory(local_folder, recursive=True)
-        
+
         # If this is a shared folder (movies and TV in same folder), 
         # we need to sync all items for each media type
-        for media_name, poster_files in poster_map.items():
-            self.sync_media_item(media_name, poster_files, remote_base, media_type=media_type)
-    
-    def sync_media_item(self, media_name: str, poster_files: List[Path], remote_base: str, media_type: str = None) -> None:
+        if media_type == 'tv':
+            # For TV, sync entire folder structure
+            for show_folder in local_folder.iterdir():
+                if show_folder.is_dir():
+                    self.sync_tv_show_folder(show_folder, remote_base)
+        else:
+            for media_name, poster_files in poster_map.items():
+                self.sync_media_item(media_name, poster_files, remote_base, media_type=media_type)
+
+    def sync_tv_show_folder(self, local_show_folder: Path, remote_base: str) -> None:
         """
-        Sync posters for a specific media item
-        
-        Args:
-            media_name: Name of the media item (folder name)
-            poster_files: List of poster files for this item
-            remote_base: Remote base path
+        Sync an entire TV show folder: main series poster and all season posters.
         """
+        import re
+        show_name = local_show_folder.name
+        # Find matching remote folder
+        def normalize(s):
+            s = re.sub(r"[-_:;&']", '', s)
+            s = re.sub(r'\s+', ' ', s)
+            s = re.sub(r'\(\d{4}\)', '', s)
+            return s.strip().lower()
+        remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
+        remote_folder = None
+        for folder in os.listdir(remote_dir):
+            folder_path = os.path.join(remote_dir, folder)
+            if not os.path.isdir(folder_path):
+                continue
+            if normalize(folder) == normalize(show_name):
+                remote_folder = folder_path
+                break
+        if not remote_folder:
+            self.logger.warning(f"No matching remote folder found for {show_name}, skipping full folder sync.")
+            return
+        # Sync main series poster (named as show.ext)
+        for file in local_show_folder.iterdir():
+            if file.is_file():
+                # Main series poster
+                if normalize(file.stem) == normalize(show_name):
+                    dest = Path(remote_folder) / f"poster{file.suffix}"
+                    shutil.copy2(str(file), str(dest))
+                    self.logger.info(f"Copied main series poster {file.name} to {dest}")
+                # Season poster (match 'Season X' anywhere in filename)
+                import re
+                season_match = re.search(r'Season[ _-]?(\d{1,2})', file.stem, re.IGNORECASE)
+                if season_match:
+                    season_num_raw = season_match.group(1)
+                    season_num_zfill = season_num_raw.zfill(2)
+                    # Look for both 'Season 1' and 'Season 01' folders
+                    possible_folders = [f"Season {season_num_raw}", f"Season {season_num_zfill}"]
+                    remote_season_folder = None
+                    for folder_name in possible_folders:
+                        candidate = Path(remote_folder) / folder_name
+                        if candidate.exists():
+                            remote_season_folder = candidate
+                            break
+                    if remote_season_folder is None:
+                        # If neither exists, create the zero-padded one
+                        remote_season_folder = Path(remote_folder) / f"Season {season_num_zfill}"
+                        remote_season_folder.mkdir(exist_ok=True)
+                    dest = remote_season_folder / f"season{season_num_zfill}{file.suffix}"
+                    shutil.copy2(str(file), str(dest))
+                    self.logger.info(f"Copied season poster {file.name} to {dest}")
         self.stats['processed'] += 1
         
         if not poster_files:
-            self.logger.debug(f"No posters found for {media_name}")
-            return
-        
-        # Check if this is a TV show that might have season posters
-        media_folder = None
-        local_folders = self.config.get_local_folders()
-        
-        # Only check for seasons if TV season syncing is enabled
-        if self.config.get_sync_tv_seasons():
-            # Find the source folder for this media item
-            for media_type, folder in local_folders.items():
-                if media_type == 'tv':  # Only check for seasons in TV folders
-                    potential_folder = folder / media_name
-                    if potential_folder.exists():
-                        media_folder = potential_folder
-                        break
-        
-        if media_folder and media_folder.exists():
-            # Use enhanced scanning for TV shows to separate series and season posters
-            series_posters, season_posters = self.scanner.find_posters_and_seasons_in_folder(media_folder)
-            
-            # Sync series poster (main show poster)
-            if series_posters:
-                self.sync_single_poster(media_name, series_posters[0], remote_base, "poster", media_type=media_type)
-            
-            # Sync season posters
-            for season_id, season_poster_list in season_posters.items():
-                if season_poster_list:
-                    # Create season subfolder path
-                    season_folder = f"Season {season_id}"
-                    self.sync_single_poster(media_name, season_poster_list[0], remote_base, "poster", season_folder, media_type=media_type)
+         if media_type == 'tv':
+            # For TV, sync entire folder structure
+            for show_folder in local_folder.iterdir():
+                if show_folder.is_dir():
+                    self.sync_tv_show_folder(show_folder, remote_base)
         else:
-            # Regular sync for movies and collections (or TV shows without season detection)
-            best_poster = poster_files[0]  # Already sorted by preference
-            self.sync_single_poster(media_name, best_poster, remote_base, "poster", media_type=media_type)
+            for media_name, poster_files in poster_map.items():
+                self.sync_media_item(media_name, poster_files, remote_base, media_type=media_type)
+        """
+        Sync an entire TV show folder: main series poster and all season posters.
+        """
+        import re
+        show_name = local_show_folder.name
+        # Find matching remote folder
+        def normalize(s):
+            s = re.sub(r"[-_:;&']", '', s)
+            s = re.sub(r'\s+', ' ', s)
+            s = re.sub(r'\(\d{4}\)', '', s)
+            return s.strip().lower()
+        remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
+        remote_folder = None
+        for folder in os.listdir(remote_dir):
+            folder_path = os.path.join(remote_dir, folder)
+            if not os.path.isdir(folder_path):
+                continue
+            if normalize(folder) == normalize(show_name):
+                remote_folder = folder_path
+                break
+        if not remote_folder:
+            self.logger.warning(f"No matching remote folder found for {show_name}, skipping full folder sync.")
+            return
+        # Sync main series poster (named as show.ext)
+        for file in local_show_folder.iterdir():
+            if file.is_file():
+                # If file stem matches show name (case-insensitive, normalized)
+                if normalize(file.stem) == normalize(show_name):
+                    dest = Path(remote_folder) / f"poster{file.suffix}"
+                    shutil.copy2(str(file), str(dest))
+                    self.logger.info(f"Copied main series poster {file.name} to {dest}")
+        # Sync season folders
+        for season_dir in local_show_folder.iterdir():
+            if season_dir.is_dir() and re.match(r'season ?\d{1,2}', season_dir.name, re.IGNORECASE):
+                # Extract season number
+                match = re.search(r'(\d{1,2})', season_dir.name)
+                if not match:
+                    continue
+                season_num = match.group(1).zfill(2)
+                remote_season_folder = Path(remote_folder) / f"Season {season_num}"
+                remote_season_folder.mkdir(exist_ok=True)
+                for poster_file in season_dir.iterdir():
+                    if poster_file.is_file():
+                        # Place as seasonXX.ext
+                        dest = remote_season_folder / f"season{season_num}{poster_file.suffix}"
+                        shutil.copy2(str(poster_file), str(dest))
+                        self.logger.info(f"Copied season poster {poster_file.name} to {dest}")
     
     def sync_single_poster(self, media_name: str, poster_file: Path, remote_base: str, 
                           poster_name: str = "poster", season_folder: str = None, media_type: str = None) -> None:
@@ -241,14 +313,17 @@ class PosterSync:
         """
         try:
             import re
-            def find_best_remote_folder(remote_base, media_name):
-                """Find an existing remote folder matching media_name, ignoring special chars (-,_,:,;), case-insensitive, and normalizing spaces. Only create if no match exists."""
+            def find_best_remote_folder(remote_base, media_name, media_type=None):
+                """Find an existing remote folder matching media_name, ignoring special chars (-,_,:,;), case-insensitive, and normalizing spaces. For TV, also remove year in parentheses."""
                 import re
-                def normalize(s):
+                def normalize(s, remove_year=False):
                     s = re.sub(r"[-_:;&']", '', s)
                     s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
+                    if remove_year:
+                        s = re.sub(r'\(\d{4}\)', '', s)  # Remove (YYYY)
                     return s.strip().lower()
-                media_name_norm = normalize(media_name)
+                remove_year = (media_type == 'tv')
+                media_name_norm = normalize(media_name, remove_year=remove_year)
                 remote_dir = os.path.join(self.remote_client.mount_point, remote_base)
                 if not os.path.exists(remote_dir):
                     return media_name  # Default to exact name if base doesn't exist
@@ -256,7 +331,7 @@ class PosterSync:
                     folder_path = os.path.join(remote_dir, folder)
                     if not os.path.isdir(folder_path):
                         continue
-                    folder_norm = normalize(folder)
+                    folder_norm = normalize(folder, remove_year=remove_year)
                     if folder_norm == media_name_norm:
                         return folder  # Use the existing folder
                 # If no match, do NOT create a new folder, just return None
@@ -270,7 +345,7 @@ class PosterSync:
                 if 'movies' in local_folders:
                     movie_folder = local_folders['movies'] / media_name
                 # Use best-matching remote folder
-                remote_folder_name = find_best_remote_folder(remote_base, media_name)
+                remote_folder_name = find_best_remote_folder(remote_base, media_name, media_type=media_type)
                 if remote_folder_name is not None:
                     if movie_folder and movie_folder.exists():
                         # Find a movie file (by extension)
@@ -291,7 +366,7 @@ class PosterSync:
                     return
             elif media_type in ('tv', 'movies'):
                 # For TV and movies, use best-matching remote folder
-                remote_folder_name = find_best_remote_folder(remote_base, media_name)
+                remote_folder_name = find_best_remote_folder(remote_base, media_name, media_type=media_type)
                 if remote_folder_name is not None:
                     if season_folder:
                         # Extract season number from season_folder (e.g., 'Season 01' -> '01')
